@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>F · 真實骰子遊戲體驗 — 機率賭場</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="page-header">
+      <h1>F · 真實骰子遊戲體驗（骰寶 Sic Bo）</h1>
+      <p>模擬真實賭桌：先設定本金，選好籌碼後點擊任意注區下注，可同時押多區，一次擲骰一起依標準賠率表結算。押注扣錢、中獎加錢，直到破產或重新入座。</p>
+    </header>
+
+    <!-- 入座 -->
+    <section class="panel" id="seatPanel">
+      <h2>入座</h2>
+      <div class="controls">
+        <div class="field">
+          <label for="startCapital">初始本金</label>
+          <input type="number" id="startCapital" min="1" value="1000" />
+        </div>
+        <button class="btn btn-primary" id="seatBtn">坐上賭桌</button>
+      </div>
+    </section>
+
+    <!-- 牌桌（入座後顯示） -->
+    <div id="table" style="display:none">
+      <section class="panel">
+        <div class="stats" style="margin-bottom:14px">
+          <div class="stat"><div class="label">目前餘額</div><div class="value" id="balance">—</div></div>
+          <div class="stat"><div class="label">本局已下注</div><div class="value" id="staked">$0</div></div>
+          <div class="stat"><div class="label">上局損益</div><div class="value" id="lastNet">—</div></div>
+        </div>
+
+        <div class="dice-tray" id="diceTray">
+          <div class="die" data-die="0"></div>
+          <div class="die" data-die="1"></div>
+          <div class="die" data-die="2"></div>
+        </div>
+
+        <div class="chip-rack">
+          <span style="color:var(--gold-300);font-weight:700;margin-right:4px">選擇籌碼：</span>
+          <div class="chip c5" data-chip="5">5</div>
+          <div class="chip c25" data-chip="25">25</div>
+          <div class="chip c100" data-chip="100">100</div>
+          <div class="chip c500" data-chip="500">500</div>
+          <button class="btn btn-ghost" id="clearBtn" style="margin-left:auto">清除下注</button>
+          <button class="btn btn-primary" id="rollBtn">🎲 擲骰</button>
+        </div>
+
+        <div class="result-banner" id="banner"></div>
+      </section>
+
+      <!-- 注區 -->
+      <section class="panel">
+        <div class="bet-board" id="board"></div>
+      </section>
+    </div>
+  </div>
+
+  <footer class="site-footer">機率統計教學互動網站 · 賭場主題</footer>
+
+  <script src="../js/main.js"></script>
+  <script>
+    (function () {
+      var Sic = App.Sic;
+
+      // ---- 狀態 ----
+      var balance = 0;
+      var selectedChip = 5;
+      var bets = {};        // key -> { type, value, amount, el }
+      var rolling = false;
+
+      // ---- 元素 ----
+      var seatPanel = document.getElementById("seatPanel");
+      var table = document.getElementById("table");
+      var balanceEl = document.getElementById("balance");
+      var stakedEl = document.getElementById("staked");
+      var lastNetEl = document.getElementById("lastNet");
+      var board = document.getElementById("board");
+      var banner = document.getElementById("banner");
+      var dieEls = [
+        document.querySelector('[data-die="0"]'),
+        document.querySelector('[data-die="1"]'),
+        document.querySelector('[data-die="2"]')
+      ];
+
+      // ---- 骰子點數渲染 ----
+      var PIP_MAP = {
+        1: [5], 2: [1, 9], 3: [1, 5, 9],
+        4: [1, 3, 7, 9], 5: [1, 3, 5, 7, 9], 6: [1, 4, 7, 3, 6, 9]
+      };
+      function renderDie(el, val) {
+        var pips = PIP_MAP[val];
+        var html = "";
+        for (var i = 1; i <= 9; i++) {
+          html += pips.indexOf(i) >= 0 ? '<span class="pip"></span>' : "<span></span>";
+        }
+        el.innerHTML = html;
+      }
+
+      // ---- 賠率文字 ----
+      function oddsText(type, value) {
+        switch (type) {
+          case "big": case "small": return "1:1";
+          case "single": return "1~3:1";
+          case "pair": return "10:1";
+          case "anyTriple": return "30:1";
+          case "specificTriple": return "180:1";
+          case "domino": return "5:1";
+          case "sum": return Sic.SUM_ODDS[value] + ":1";
+        }
+        return "";
+      }
+
+      function betKey(type, value) {
+        if (type === "domino") return "domino:" + value.join("-");
+        return type + ":" + (value === undefined ? "" : value);
+      }
+
+      // ---- 建立一個注區 cell ----
+      function makeCell(type, value, name, section) {
+        var cell = document.createElement("div");
+        cell.className = "bet-cell";
+        cell.innerHTML =
+          '<div class="bet-name">' + name + "</div>" +
+          '<div class="bet-odds">' + oddsText(type, value) + "</div>";
+        var key = betKey(type, value);
+        cell.addEventListener("click", function () { placeBet(type, value, cell, key); });
+        section.appendChild(cell);
+        return cell;
+      }
+
+      function addSection(title, builder) {
+        var sec = document.createElement("div");
+        sec.className = "bet-section";
+        sec.innerHTML = "<h3>" + title + "</h3>";
+        var grid = document.createElement("div");
+        grid.className = "bet-grid";
+        sec.appendChild(grid);
+        builder(grid);
+        board.appendChild(sec);
+      }
+
+      // ---- 建立整個注區面板 ----
+      function buildBoard() {
+        addSection("大 / 小（開豹子皆輸）", function (g) {
+          makeCell("big", undefined, "大 11–17", g);
+          makeCell("small", undefined, "小 4–10", g);
+        });
+        addSection("單點（出現 1/2/3 顆 賠 1/2/3 倍）", function (g) {
+          for (var i = 1; i <= 6; i++) makeCell("single", i, "單點 " + i, g);
+        });
+        addSection("指定對子（≥2 顆同點，10:1）", function (g) {
+          for (var i = 1; i <= 6; i++) makeCell("pair", i, "對子 " + i, g);
+        });
+        addSection("豹子", function (g) {
+          makeCell("anyTriple", undefined, "任意豹子", g);
+          for (var i = 1; i <= 6; i++) makeCell("specificTriple", i, "豹子 " + i, g);
+        });
+        addSection("兩點組合 Domino（5:1）", function (g) {
+          Sic.DOMINOES.forEach(function (d) {
+            makeCell("domino", d, d[0] + " · " + d[1], g);
+          });
+        });
+        addSection("總和（4–17）", function (g) {
+          for (var s = 4; s <= 17; s++) makeCell("sum", s, "總和 " + s, g);
+        });
+      }
+
+      // ---- 下注 ----
+      function placeBet(type, value, cell, key) {
+        if (rolling) return;
+        if (balance < selectedChip) { flashBanner("餘額不足以下注此籌碼", "lose"); return; }
+        balance -= selectedChip;
+        if (!bets[key]) bets[key] = { type: type, value: value, amount: 0, el: cell };
+        bets[key].amount += selectedChip;
+        cell.classList.add("active");
+        updateBetBadge(cell, bets[key].amount);
+        refreshMoney();
+      }
+
+      function updateBetBadge(cell, amount) {
+        var badge = cell.querySelector(".bet-amount");
+        if (!badge) {
+          badge = document.createElement("div");
+          badge.className = "bet-amount";
+          cell.appendChild(badge);
+        }
+        badge.textContent = amount >= 1000 ? App.abbr(amount) : amount;
+      }
+
+      function clearBets(refund) {
+        Object.keys(bets).forEach(function (k) {
+          var b = bets[k];
+          if (refund) balance += b.amount;
+          b.el.classList.remove("active");
+          var badge = b.el.querySelector(".bet-amount");
+          if (badge) badge.remove();
+        });
+        bets = {};
+        refreshMoney();
+      }
+
+      function totalStaked() {
+        var t = 0;
+        Object.keys(bets).forEach(function (k) { t += bets[k].amount; });
+        return t;
+      }
+
+      function refreshMoney() {
+        balanceEl.textContent = App.money(balance);
+        balanceEl.className = "value";
+        stakedEl.textContent = App.money(totalStaked());
+      }
+
+      function flashBanner(msg, cls) {
+        banner.textContent = msg;
+        banner.className = "result-banner " + (cls || "");
+      }
+
+      // ---- 擲骰（90ms 動畫）+ 結算 ----
+      function roll() {
+        if (rolling) return;
+        if (totalStaked() === 0) { flashBanner("請先下注再擲骰", "lose"); return; }
+        rolling = true;
+        banner.textContent = "";
+        banner.className = "result-banner";
+        dieEls.forEach(function (el) { el.classList.add("rolling"); });
+
+        var finalDice = Sic.roll();
+        var ticks = 0;
+        var anim = setInterval(function () {
+          var tmp = Sic.roll();
+          for (var i = 0; i < 3; i++) renderDie(dieEls[i], tmp[i]);
+          ticks++;
+          if (ticks >= 12) {
+            clearInterval(anim);
+            for (var j = 0; j < 3; j++) renderDie(dieEls[j], finalDice[j]);
+            dieEls.forEach(function (el) { el.classList.remove("rolling"); });
+            settle(finalDice);
+          }
+        }, 90);
+      }
+
+      function settle(dice) {
+        var roundNet = 0;
+        var keys = Object.keys(bets);
+        keys.forEach(function (k) {
+          var b = bets[k];
+          var net = Sic.settleBet(b, dice); // 贏：+amount*odds（淨利）；輸：-amount
+          if (net > 0) {
+            balance += b.amount + net;       // 退回本金 + 派彩
+            roundNet += net;
+            b.el.classList.add("win-flash");
+          } else {
+            roundNet -= b.amount;            // 本金已扣，損失即下注額
+            b.el.classList.add("lose-flash");
+          }
+        });
+
+        // 結算動畫後清掉旗標與下注
+        setTimeout(function () {
+          keys.forEach(function (k) {
+            if (bets[k]) bets[k].el.classList.remove("win-flash", "lose-flash");
+          });
+        }, 850);
+
+        clearBets(false);  // 下注已結算，不退款
+        rolling = false;
+
+        var sum = Sic.sum(dice);
+        var face = dice.join(" · ");
+        var triple = Sic.isTriple(dice) ? "（豹子！）" : "";
+        lastNetEl.textContent = (roundNet >= 0 ? "+" : "") + App.money(roundNet);
+        lastNetEl.className = "value " + (roundNet >= 0 ? "win" : "lose");
+
+        if (balance <= 0 && totalStaked() === 0) {
+          flashBanner("🎲 " + face + "｜總和 " + sum + triple +
+            "　💥 你已破產，請重新入座", "lose");
+          setTimeout(restart, 1800);
+        } else {
+          flashBanner("🎲 " + face + "｜總和 " + sum + triple +
+            "　本局" + (roundNet >= 0 ? "贏得 " : "損失 ") + App.money(Math.abs(roundNet)),
+            roundNet >= 0 ? "win" : "lose");
+        }
+      }
+
+      function restart() {
+        table.style.display = "none";
+        seatPanel.style.display = "";
+        banner.textContent = "";
+        banner.className = "result-banner";
+      }
+
+      // ---- 籌碼選擇 ----
+      document.querySelectorAll(".chip").forEach(function (c) {
+        c.addEventListener("click", function () {
+          document.querySelectorAll(".chip").forEach(function (x) { x.classList.remove("selected"); });
+          c.classList.add("selected");
+          selectedChip = parseInt(c.getAttribute("data-chip"), 10);
+        });
+      });
+      document.querySelector('.chip[data-chip="5"]').classList.add("selected");
+
+      document.getElementById("clearBtn").addEventListener("click", function () {
+        if (!rolling) clearBets(true);
+      });
+      document.getElementById("rollBtn").addEventListener("click", roll);
+
+      // ---- 入座 ----
+      document.getElementById("seatBtn").addEventListener("click", function () {
+        var cap = parseInt(document.getElementById("startCapital").value, 10);
+        if (isNaN(cap) || cap < 1) cap = 1000;
+        balance = cap;
+        seatPanel.style.display = "none";
+        table.style.display = "";
+        if (!board.hasChildNodes()) buildBoard();
+        // 初始化骰面
+        renderDie(dieEls[0], 1); renderDie(dieEls[1], 2); renderDie(dieEls[2], 3);
+        lastNetEl.textContent = "—";
+        lastNetEl.className = "value";
+        refreshMoney();
+        flashBanner("選好籌碼，點擊注區下注，再按「擲骰」", "");
+      });
+    })();
+  </script>
+</body>
+</html>

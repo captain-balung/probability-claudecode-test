@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>機率賭場 — 機率統計教學互動網站</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="page-header">
+      <h1>🎲 機率賭場</h1>
+      <p>用互動模擬把抽象的機率統計變得「眼見為憑」。選一個模組開始探索吧。</p>
+    </header>
+
+    <section class="panel">
+      <div class="module-grid">
+        <a class="module-card" href="modules/bell_curve.html">
+          <span class="tag">A</span>
+          <h3>鐘形曲線視覺化</h3>
+          <p>丟 N 枚硬幣，用 BigInt 精算組合數 C(n,k)，以對數縮放長條圖呈現常態分配的鐘形。</p>
+        </a>
+        <a class="module-card" href="modules/coin.html">
+          <span class="tag">B</span>
+          <h3>硬幣二項分配分析</h3>
+          <p>n≤10 實際窮舉每一種正反面排列「眼見為憑」；n&gt;10 改用公式瞬間計算機率分布。</p>
+        </a>
+        <a class="module-card" href="modules/sicbo.html">
+          <span class="tag">D</span>
+          <h3>賭場模擬 A · 固定平注</h3>
+          <p>每把固定金額連續下注大／小，觀察本金走勢，體會賭場優勢如何蠶食賭資。</p>
+        </a>
+        <a class="module-card" href="modules/sicbo2.html">
+          <span class="tag">E</span>
+          <h3>賭場模擬 B · 馬丁格爾</h3>
+          <p>輸了加倍、贏了重置——看似必勝的策略，遇上賭桌上限與破產時會如何崩潰。</p>
+        </a>
+        <a class="module-card" href="modules/sicbo3.html">
+          <span class="tag">F</span>
+          <h3>真實骰子遊戲體驗</h3>
+          <p>完整骰寶賭桌：大小、單點、對子、豹子、兩點組合、總和，多區同時下注一次結算。</p>
+        </a>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>關於本站</h2>
+      <p style="margin:0;color:rgba(245,239,224,0.82)">
+        本站為純前端靜態網站（HTML / CSS / JavaScript），部署於 GitHub Pages。
+        所有計算皆於瀏覽器即時完成，無需後端。
+        <span class="badge">D3.js v7</span>
+        <span class="badge">BigInt 精算</span>
+        <span class="badge">教學取向</span>
+      </p>
+    </section>
+  </div>
+
+  <footer class="site-footer">機率統計教學互動網站 · 賭場主題</footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

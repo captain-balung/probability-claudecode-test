@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>D · 賭場模擬 A 固定平注 — 機率賭場</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+</head>
+<body>
+  <div class="container">
+    <header class="page-header">
+      <h1>D · 賭場連續下注模擬 A — 固定平注</h1>
+      <p>每一把都下注「固定金額」於大／小（賠 1:1，開豹子兩邊皆輸，每把勝率約 48.6%）。本金歸零即破產停止。走勢圖會分 10 段、每段約 1/10 局逐步動畫展示。</p>
+    </header>
+
+    <section class="panel">
+      <h2>參數設定</h2>
+      <div class="controls">
+        <div class="field">
+          <label for="capital">初始本金</label>
+          <input type="number" id="capital" min="1" value="1000" />
+        </div>
+        <div class="field">
+          <label for="bet">每把固定下注額</label>
+          <input type="number" id="bet" min="1" value="50" />
+        </div>
+        <div class="field">
+          <label for="rounds">模擬次數（1–1000）</label>
+          <input type="number" id="rounds" min="1" max="1000" value="1000" />
+        </div>
+        <button class="btn btn-primary" id="runBtn">開始模擬</button>
+      </div>
+      <div class="note">勝率約 48.6%（105/216）。長期下注，賭場優勢會讓本金緩慢下滑——這正是固定平注的宿命。</div>
+    </section>
+
+    <section class="panel">
+      <h2>統計</h2>
+      <div class="stats">
+        <div class="stat"><div class="label">已進行局數</div><div class="value" id="sRounds">—</div></div>
+        <div class="stat"><div class="label">豹子出現次數</div><div class="value" id="sTriple">—</div></div>
+        <div class="stat"><div class="label">目前本金</div><div class="value" id="sCapital">—</div></div>
+        <div class="stat"><div class="label">總損益</div><div class="value" id="sPnl">—</div></div>
+        <div class="stat"><div class="label">狀態</div><div class="value" id="sStatus" style="font-size:1.05rem">—</div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>本金走勢圖</h2>
+      <div class="chart-wrap"><svg id="chart" width="1040" height="380"></svg></div>
+    </section>
+  </div>
+
+  <footer class="site-footer">機率統計教學互動網站 · 賭場主題</footer>
+
+  <script src="../js/main.js"></script>
+  <script>
+    (function () {
+      var Sic = App.Sic;
+      var btn = document.getElementById("runBtn");
+      var elRounds = document.getElementById("sRounds");
+      var elTriple = document.getElementById("sTriple");
+      var elCapital = document.getElementById("sCapital");
+      var elPnl = document.getElementById("sPnl");
+      var elStatus = document.getElementById("sStatus");
+
+      var W = 1040, H = 380, M = { t: 16, r: 16, b: 28, l: 64 };
+      var svg = d3.select("#chart");
+      var animTimer = null;
+
+      // ---- 預先跑完整場模擬，得到本金曲線 ----
+      function simulate(capital, bet, rounds) {
+        var equity = [capital];
+        var triples = 0;
+        var played = 0;
+        var bankrupt = false;
+        for (var i = 0; i < rounds; i++) {
+          var d = Sic.roll();
+          var res = Sic.bigSmall(d);     // 'big' | 'small' | 'triple'
+          if (res === "triple") triples++;
+          // 固定押「大」
+          capital += (res === "big") ? bet : -bet;
+          played++;
+          equity.push(capital);
+          if (capital <= 0) { capital = 0; bankrupt = true; equity[equity.length - 1] = 0; break; }
+        }
+        return { equity: equity, triples: triples, played: played, bankrupt: bankrupt, finalCapital: capital };
+      }
+
+      // ---- D3 繪圖：依資料畫到第 count 個點（含分段動畫上色） ----
+      function drawChart(equity, initial) {
+        svg.selectAll("*").remove();
+        var n = equity.length;
+        var x = d3.scaleLinear().domain([0, n - 1]).range([M.l, W - M.r]);
+        var ymin = d3.min(equity), ymax = d3.max(equity);
+        var pad = (ymax - ymin) * 0.1 || 10;
+        var y = d3.scaleLinear().domain([Math.min(0, ymin) - pad, ymax + pad]).range([H - M.b, M.t]);
+
+        // 座標軸
+        svg.append("g").attr("class", "axis")
+          .attr("transform", "translate(0," + (H - M.b) + ")")
+          .call(d3.axisBottom(x).ticks(10).tickFormat(d3.format("d")));
+        svg.append("g").attr("class", "axis")
+          .attr("transform", "translate(" + M.l + ",0)")
+          .call(d3.axisLeft(y).ticks(6).tickFormat(function (v) { return App.abbr(v); }));
+
+        // 初始本金基準線（零損益）
+        svg.append("line").attr("class", "zero-line")
+          .attr("x1", M.l).attr("x2", W - M.r)
+          .attr("y1", y(initial)).attr("y2", y(initial));
+
+        // 分段彩色折線的群組
+        var path = svg.append("g").attr("class", "lines");
+        return { x: x, y: y, path: path };
+      }
+
+      // 把第 i→i+1 段依「相對初始本金」上色（正綠負紅）
+      function renderUpTo(ctx, equity, initial, count) {
+        var x = ctx.x, y = ctx.y;
+        var g = ctx.path;
+        g.selectAll("*").remove();
+        for (var i = 0; i < count - 1 && i < equity.length - 1; i++) {
+          var v2 = equity[i + 1];
+          var color = (v2 >= initial) ? getComputedStyle(document.documentElement).getPropertyValue("--win")
+                                      : getComputedStyle(document.documentElement).getPropertyValue("--lose");
+          g.append("line")
+            .attr("x1", x(i)).attr("y1", y(equity[i]))
+            .attr("x2", x(i + 1)).attr("y2", y(v2))
+            .attr("stroke", color.trim())
+            .attr("stroke-width", 2)
+            .attr("stroke-linecap", "round");
+        }
+      }
+
+      function updateStats(sim, shownCapital, shownRounds, finished) {
+        elRounds.textContent = shownRounds;
+        elTriple.textContent = sim.triples;
+        elCapital.textContent = App.money(shownCapital);
+        var pnl = shownCapital - sim.equity[0];
+        elPnl.textContent = (pnl >= 0 ? "+" : "") + App.money(pnl);
+        elPnl.className = "value " + (pnl >= 0 ? "win" : "lose");
+        elCapital.className = "value " + (shownCapital >= sim.equity[0] ? "win" : "lose");
+        if (finished) {
+          if (sim.bankrupt) { elStatus.textContent = "💥 破產"; elStatus.className = "value lose"; }
+          else { elStatus.textContent = "✔ 完成"; elStatus.className = "value win"; }
+        } else {
+          elStatus.textContent = "⏳ 模擬中…"; elStatus.className = "value";
+        }
+      }
+
+      function run() {
+        if (animTimer) { clearInterval(animTimer); animTimer = null; }
+        var capital = Math.max(1, parseInt(document.getElementById("capital").value, 10) || 1000);
+        var bet = Math.max(1, parseInt(document.getElementById("bet").value, 10) || 50);
+        var rounds = parseInt(document.getElementById("rounds").value, 10) || 1000;
+        rounds = Math.max(1, Math.min(1000, rounds));
+        document.getElementById("rounds").value = rounds;
+
+        var sim = simulate(capital, bet, rounds);
+        var ctx = drawChart(sim.equity, capital);
+
+        // 分 10 段動畫：每段顯示 totalPoints/10
+        btn.disabled = true;
+        var totalPoints = sim.equity.length;
+        var segments = 10;
+        var step = Math.max(1, Math.ceil(totalPoints / segments));
+        var seg = 0;
+
+        animTimer = setInterval(function () {
+          seg++;
+          var count = Math.min(totalPoints, seg * step);
+          renderUpTo(ctx, sim.equity, capital, count);
+          var shownRounds = count - 1;
+          updateStats(sim, sim.equity[count - 1], shownRounds, false);
+          if (count >= totalPoints) {
+            clearInterval(animTimer); animTimer = null;
+            updateStats(sim, sim.finalCapital, sim.played, true);
+            btn.disabled = false;
+          }
+        }, 180);
+      }
+
+      btn.addEventListener("click", run);
+    })();
+  </script>
+</body>
+</html>

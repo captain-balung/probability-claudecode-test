@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>E · 賭場模擬 B 馬丁格爾 — 機率賭場</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+</head>
+<body>
+  <div class="container">
+    <header class="page-header">
+      <h1>E · 賭場連續下注模擬 B — 馬丁格爾</h1>
+      <p>馬丁格爾策略：輸了把下注額加倍、贏了重置回初始下注額。下注標的、賠率與停止規則皆與 <a href="sicbo.html">模組 D</a> 對齊，唯一差別是「下注額的變化方式」（D 固定、E 加倍），供教學對比。</p>
+    </header>
+
+    <section class="panel">
+      <h2>參數設定</h2>
+      <div class="controls">
+        <div class="field">
+          <label for="capital">初始本金</label>
+          <input type="number" id="capital" min="1" value="1000" />
+        </div>
+        <div class="field">
+          <label for="bet">初始下注額</label>
+          <input type="number" id="bet" min="1" value="10" />
+        </div>
+        <div class="field">
+          <label for="limit">賭桌上限</label>
+          <input type="number" id="limit" min="1" value="500" />
+        </div>
+        <div class="field">
+          <label for="rounds">模擬次數（1–1000）</label>
+          <input type="number" id="rounds" min="1" max="1000" value="1000" />
+        </div>
+        <button class="btn btn-primary" id="runBtn">開始模擬</button>
+      </div>
+      <div class="note">
+        策略邏輯：① 本金歸零 → 破產停止。② 應下注額（加倍後）超過賭桌上限 → 記一次「策略失敗」。
+        ③ 失敗後不停止，改以賭桌上限封頂續押。④ 封頂下注若贏 → 重置回初始下注額，回到正常循環。
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>統計</h2>
+      <div class="stats">
+        <div class="stat"><div class="label">已進行局數</div><div class="value" id="sRounds">—</div></div>
+        <div class="stat"><div class="label">豹子出現次數</div><div class="value" id="sTriple">—</div></div>
+        <div class="stat"><div class="label">策略失敗（撞桌限）</div><div class="value" id="sFail">—</div></div>
+        <div class="stat"><div class="label">目前本金</div><div class="value" id="sCapital">—</div></div>
+        <div class="stat"><div class="label">總損益</div><div class="value" id="sPnl">—</div></div>
+        <div class="stat"><div class="label">狀態</div><div class="value" id="sStatus" style="font-size:1.05rem">—</div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>本金走勢圖</h2>
+      <div class="chart-wrap"><svg id="chart" width="1040" height="380"></svg></div>
+    </section>
+  </div>
+
+  <footer class="site-footer">機率統計教學互動網站 · 賭場主題</footer>
+
+  <script src="../js/main.js"></script>
+  <script>
+    (function () {
+      var Sic = App.Sic;
+      var btn = document.getElementById("runBtn");
+      var elRounds = document.getElementById("sRounds");
+      var elTriple = document.getElementById("sTriple");
+      var elFail = document.getElementById("sFail");
+      var elCapital = document.getElementById("sCapital");
+      var elPnl = document.getElementById("sPnl");
+      var elStatus = document.getElementById("sStatus");
+
+      var W = 1040, H = 380, M = { t: 16, r: 16, b: 28, l: 64 };
+      var svg = d3.select("#chart");
+      var animTimer = null;
+
+      // ---- 馬丁格爾模擬 ----
+      function simulate(capital, initBet, limit, rounds) {
+        var equity = [capital];
+        var triples = 0, played = 0, fails = 0, bankrupt = false;
+        var intended = initBet; // 馬丁格爾的「應下注額」
+
+        for (var i = 0; i < rounds; i++) {
+          var place;
+          if (intended > limit) { fails++; place = limit; }  // 撞桌限 → 封頂
+          else place = intended;
+          if (place > capital) place = capital;              // 不能押超過本金（all-in）
+
+          var d = Sic.roll();
+          var res = Sic.bigSmall(d);
+          if (res === "triple") triples++;
+
+          if (res === "big") {            // 贏：重置
+            capital += place;
+            intended = initBet;
+          } else {                        // 輸（小或豹子）：加倍
+            capital -= place;
+            intended = intended * 2;
+          }
+          played++;
+          equity.push(capital);
+          if (capital <= 0) { capital = 0; bankrupt = true; equity[equity.length - 1] = 0; break; }
+        }
+        return { equity: equity, triples: triples, played: played, fails: fails,
+                 bankrupt: bankrupt, finalCapital: capital };
+      }
+
+      // ---- D3 繪圖（與 D 相同配色規則）----
+      function drawChart(equity, initial) {
+        svg.selectAll("*").remove();
+        var n = equity.length;
+        var x = d3.scaleLinear().domain([0, n - 1]).range([M.l, W - M.r]);
+        var ymin = d3.min(equity), ymax = d3.max(equity);
+        var pad = (ymax - ymin) * 0.1 || 10;
+        var y = d3.scaleLinear().domain([Math.min(0, ymin) - pad, ymax + pad]).range([H - M.b, M.t]);
+
+        svg.append("g").attr("class", "axis")
+          .attr("transform", "translate(0," + (H - M.b) + ")")
+          .call(d3.axisBottom(x).ticks(10).tickFormat(d3.format("d")));
+        svg.append("g").attr("class", "axis")
+          .attr("transform", "translate(" + M.l + ",0)")
+          .call(d3.axisLeft(y).ticks(6).tickFormat(function (v) { return App.abbr(v); }));
+
+        svg.append("line").attr("class", "zero-line")
+          .attr("x1", M.l).attr("x2", W - M.r)
+          .attr("y1", y(initial)).attr("y2", y(initial));
+
+        var path = svg.append("g").attr("class", "lines");
+        return { x: x, y: y, path: path };
+      }
+
+      function renderUpTo(ctx, equity, initial, count) {
+        var x = ctx.x, y = ctx.y, g = ctx.path;
+        g.selectAll("*").remove();
+        var win = getComputedStyle(document.documentElement).getPropertyValue("--win").trim();
+        var lose = getComputedStyle(document.documentElement).getPropertyValue("--lose").trim();
+        for (var i = 0; i < count - 1 && i < equity.length - 1; i++) {
+          var v2 = equity[i + 1];
+          g.append("line")
+            .attr("x1", x(i)).attr("y1", y(equity[i]))
+            .attr("x2", x(i + 1)).attr("y2", y(v2))
+            .attr("stroke", v2 >= initial ? win : lose)
+            .attr("stroke-width", 2).attr("stroke-linecap", "round");
+        }
+      }
+
+      function updateStats(sim, shownCapital, shownRounds, finished) {
+        elRounds.textContent = shownRounds;
+        elTriple.textContent = sim.triples;
+        elFail.textContent = sim.fails;
+        elCapital.textContent = App.money(shownCapital);
+        var pnl = shownCapital - sim.equity[0];
+        elPnl.textContent = (pnl >= 0 ? "+" : "") + App.money(pnl);
+        elPnl.className = "value " + (pnl >= 0 ? "win" : "lose");
+        elCapital.className = "value " + (shownCapital >= sim.equity[0] ? "win" : "lose");
+        if (finished) {
+          if (sim.bankrupt) { elStatus.textContent = "💥 破產"; elStatus.className = "value lose"; }
+          else { elStatus.textContent = "✔ 完成"; elStatus.className = "value win"; }
+        } else { elStatus.textContent = "⏳ 模擬中…"; elStatus.className = "value"; }
+      }
+
+      function run() {
+        if (animTimer) { clearInterval(animTimer); animTimer = null; }
+        var capital = Math.max(1, parseInt(document.getElementById("capital").value, 10) || 1000);
+        var initBet = Math.max(1, parseInt(document.getElementById("bet").value, 10) || 10);
+        var limit = Math.max(1, parseInt(document.getElementById("limit").value, 10) || 500);
+        var rounds = parseInt(document.getElementById("rounds").value, 10) || 1000;
+        rounds = Math.max(1, Math.min(1000, rounds));
+        document.getElementById("rounds").value = rounds;
+
+        var sim = simulate(capital, initBet, limit, rounds);
+        var ctx = drawChart(sim.equity, capital);
+
+        btn.disabled = true;
+        var totalPoints = sim.equity.length;
+        var step = Math.max(1, Math.ceil(totalPoints / 10));
+        var seg = 0;
+        animTimer = setInterval(function () {
+          seg++;
+          var count = Math.min(totalPoints, seg * step);
+          renderUpTo(ctx, sim.equity, capital, count);
+          updateStats(sim, sim.equity[count - 1], count - 1, false);
+          if (count >= totalPoints) {
+            clearInterval(animTimer); animTimer = null;
+            updateStats(sim, sim.finalCapital, sim.played, true);
+            btn.disabled = false;
+          }
+        }, 180);
+      }
+
+      btn.addEventListener("click", run);
+    })();
+  </script>
+</body>
+</html>

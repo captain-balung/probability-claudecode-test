@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>B · 硬幣二項分配分析 — 機率賭場</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="page-header">
+      <h1>B · 硬幣二項分配分析</h1>
+      <p>分析丟 n 枚硬幣時，正面（H）出現次數的機率分布。<b>n ≤ 10</b> 會實際窮舉列出每一種正反面排列「眼見為憑」；<b>n &gt; 10</b> 改用組合公式 C(n,k) / 2ⁿ 瞬間計算。兩者數學結果完全一致。</p>
+    </header>
+
+    <section class="panel">
+      <h2>參數設定</h2>
+      <div class="controls">
+        <div class="field">
+          <label for="coins">硬幣數量 n（1–100）</label>
+          <input type="number" id="coins" min="1" max="100" value="4" />
+          <span class="hint">n ≤ 10：窮舉模式；n &gt; 10：公式模式</span>
+        </div>
+        <button class="btn btn-primary" id="runBtn">分析</button>
+      </div>
+      <div class="note" id="modeNote"></div>
+    </section>
+
+    <section class="panel">
+      <h2>機率分布</h2>
+      <div id="cards"></div>
+    </section>
+  </div>
+
+  <footer class="site-footer">機率統計教學互動網站 · 賭場主題</footer>
+
+  <script src="../js/main.js"></script>
+  <script>
+    (function () {
+      var input = document.getElementById("coins");
+      var cards = document.getElementById("cards");
+      var modeNote = document.getElementById("modeNote");
+      var btn = document.getElementById("runBtn");
+
+      // 窮舉：產生所有 2^n 種序列，依正面數分組
+      function enumerate(n) {
+        var groups = [];
+        for (var k = 0; k <= n; k++) groups.push([]);
+        var total = 1 << n;
+        for (var i = 0; i < total; i++) {
+          var seq = "";
+          var heads = 0;
+          for (var b = n - 1; b >= 0; b--) {
+            if (i & (1 << b)) { seq += "H"; heads++; }
+            else { seq += "T"; }
+          }
+          groups[heads].push(seq);
+        }
+        return groups; // groups[k] = 該正面數的所有序列
+      }
+
+      function seqHtml(seq) {
+        var out = "";
+        for (var i = 0; i < seq.length; i++) {
+          out += '<span class="' + seq[i] + '">' + seq[i] + "</span>";
+        }
+        return '<span class="combo-chip">' + out + "</span>";
+      }
+
+      function render(n) {
+        var enumMode = n <= 10;
+        cards.innerHTML = "";
+
+        var total = App.combination(n, 0); // 起始；其實要 2^n
+        // 2^n
+        var totalPow = 1n;
+        for (var t = 0; t < n; t++) totalPow *= 2n;
+
+        // 各 k 的組合數
+        var counts = [];
+        var maxCount = 0n;
+        for (var k = 0; k <= n; k++) {
+          var c = App.combination(n, k);
+          counts.push(c);
+          if (c > maxCount) maxCount = c;
+        }
+
+        var groups = enumMode ? enumerate(n) : null;
+
+        for (var k2 = 0; k2 <= n; k2++) {
+          var c2 = counts[k2];
+          var prob = Number(c2 * 1000000n / totalPow) / 10000; // %
+          var widthPct = Number(c2 * 1000n / maxCount) / 10; // 相對最大值
+
+          var card = document.createElement("div");
+          card.className = "binom-card";
+
+          var head = '<div class="head">' +
+            '<span class="title">' + k2 + ' 枚正面（H）</span>' +
+            '<span class="prob">組合數 ' + App.formatBig(c2) +
+            ' ／ ' + App.formatBig(totalPow) + ' ＝ <b>' + prob.toFixed(2) + '%</b></span>' +
+            '</div>';
+
+          var bar = '<div class="bar-track"><div class="bar-fill" style="width:' +
+            widthPct.toFixed(1) + '%"></div></div>';
+
+          var combos = "";
+          if (enumMode) {
+            var list = groups[k2];
+            var chips = "";
+            for (var s = 0; s < list.length; s++) chips += seqHtml(list[s]);
+            combos = '<div class="combos">' + chips + '</div>';
+          }
+
+          card.innerHTML = head + bar + combos;
+          cards.appendChild(card);
+        }
+
+        modeNote.innerHTML = enumMode
+          ? "目前為 <b>窮舉模式</b>：實際列出全部 2<sup>" + n + "</sup> = <b>" +
+            App.formatBig(totalPow) + "</b> 種排列，並依正面數分組。"
+          : "目前為 <b>公式模式</b>：n &gt; 10，直接以 C(n,k) / 2<sup>" + n +
+            "</sup> 計算各類機率，不窮舉（避免 2<sup>" + n + "</sup> 種爆量）。";
+      }
+
+      function run() {
+        var n = parseInt(input.value, 10);
+        if (isNaN(n) || n < 1) n = 1;
+        if (n > 100) n = 100;
+        input.value = n;
+        render(n);
+      }
+
+      btn.addEventListener("click", run);
+      input.addEventListener("keydown", function (e) { if (e.key === "Enter") run(); });
+      run();
+    })();
+  </script>
+</body>
+</html>
