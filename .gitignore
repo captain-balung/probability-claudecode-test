@@ -1,0 +1,4 @@
+.playwright-mcp/
+references/
+*.jpeg
+*.png

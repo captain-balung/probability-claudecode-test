@@ -397,6 +397,105 @@ a:hover { color: var(--gold-300); }
 .result-banner.win { background: rgba(46,204,113,0.18); border: 1px solid var(--win); color: var(--win); }
 .result-banner.lose { background: rgba(231,76,60,0.16); border: 1px solid var(--lose); color: var(--lose); }
 
+/* ============================================================
+   F：仿真賭桌版面（參照真實 Sic Bo 賭桌，配色融入本站金綠主題）
+   ============================================================ */
+.sicbo-felt {
+  background:
+    radial-gradient(130% 90% at 50% 0%, rgba(28,107,63,0.55), transparent 62%),
+    repeating-linear-gradient(45deg, rgba(0,0,0,0.05) 0 11px, transparent 11px 22px),
+    linear-gradient(180deg, var(--felt-700), var(--felt-800));
+  border: 3px solid var(--gold-500);
+  border-radius: 18px;
+  padding: 14px;
+  box-shadow: inset 0 0 46px rgba(0,0,0,0.5), var(--shadow);
+}
+.band {
+  border: 1px solid rgba(212,175,55,0.35);
+  border-radius: 12px;
+  padding: 10px 12px 12px;
+  margin-bottom: 12px;
+}
+.band:last-child { margin-bottom: 0; }
+.zone-label {
+  font-size: 0.78rem; color: var(--gold-300); font-weight: 700;
+  letter-spacing: 0.5px; margin-bottom: 8px; text-align: center;
+  text-transform: uppercase;
+}
+.zone { margin-bottom: 10px; }
+.zone:last-child { margin-bottom: 0; }
+.zone-grid { display: flex; flex-wrap: wrap; gap: 7px; justify-content: center; }
+.center-stack { display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+
+/* 第一帶：SMALL | 中央 | BIG */
+.band-top {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 3.4fr minmax(120px, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+/* 角落大區 SMALL / BIG（賭桌靈魂，保留紅色） */
+.corner-box {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; gap: 2px; min-width: 110px;
+  border-width: 2px; padding: 14px 10px;
+  background: linear-gradient(180deg, #8e2b22, #5e1a14);
+}
+.corner-box:hover { background: linear-gradient(180deg, #a5342a, #6e201a); }
+.corner-box.active {
+  background: linear-gradient(180deg, #c0392b, #8e2b22);
+  box-shadow: 0 0 0 2px var(--gold-400), inset 0 0 16px rgba(0,0,0,0.4);
+}
+.corner-box .corner-en {
+  font-size: 1.5rem; font-weight: 900; color: var(--gold-300);
+  letter-spacing: 2px; line-height: 1;
+}
+.corner-box .corner-zh { font-size: 1rem; font-weight: 800; color: #fff; }
+.corner-box .corner-range { font-size: 0.86rem; color: var(--gold-300); font-weight: 700; }
+.corner-box .corner-note { font-size: 0.68rem; color: rgba(255,255,255,0.78); }
+
+/* 在氈面上，注區改為更通透的「桌面框」而非實心按鈕 */
+.sicbo-felt .bet-cell {
+  background: rgba(0,0,0,0.26);
+  border: 1.5px solid rgba(212,175,55,0.4);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 9px; min-width: 56px;
+}
+.sicbo-felt .bet-cell .bet-name { font-size: 0.82rem; }
+.sicbo-felt .bet-cell .bet-odds { font-size: 0.68rem; }
+
+/* 總和列 */
+.sum-grid { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.sum-grid .bet-cell { min-width: 58px; }
+.cell-num { font-size: 1.3rem; font-weight: 900; color: var(--gold-300); line-height: 1; }
+
+/* 單點列 */
+.single-grid { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.single-cell { min-width: 76px; }
+
+/* 任意豹子加寬 */
+.bet-cell.wide { min-width: 86px; }
+
+/* 迷你骰子點陣（紅點，仿真實賭桌骰面） */
+.mdice { display: inline-flex; gap: 3px; }
+.mdie {
+  width: 20px; height: 20px; border-radius: 4px;
+  background: linear-gradient(145deg, #fff, #e7e2d2);
+  display: grid; grid-template-columns: repeat(3,1fr); grid-template-rows: repeat(3,1fr);
+  padding: 2px; box-shadow: 0 1px 2px rgba(0,0,0,0.45);
+}
+.mdie span { display: block; }
+.mdie .mpip {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: #c0392b; align-self: center; justify-self: center;
+}
+
+@media (max-width: 720px) {
+  .band-top { grid-template-columns: 1fr; }
+  .corner-box { min-width: auto; }
+}
+
 /* ---------- 雜項 ---------- */
 .money { font-variant-numeric: tabular-nums; font-weight: 800; }
 .note {
